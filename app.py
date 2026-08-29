@@ -137,7 +137,13 @@ if uploaded_file is not None:
     try:
         df = pd.read_csv(uploaded_file)
         st.sidebar.success("✅ CSV loaded")
-
+if "Inventory" in df.columns:
+    st.sidebar.success("📦 Inventory column detected")
+else:
+    st.sidebar.info(
+        "📦 No Inventory column found. "
+        "Manual stock input will be used."
+    )
     except Exception:
         st.error("Unable to read CSV.")
         st.stop()
@@ -201,7 +207,23 @@ if "Price" in df.columns:
 else:
 
     df["Revenue"] = 0
+# =========================================================
+# INVENTORY DATA SUPPORT
+# =========================================================
+if "Inventory" in df.columns:
 
+    df["Inventory"] = pd.to_numeric(
+        df["Inventory"],
+        errors="coerce"
+    )
+
+    df["Inventory"] = df["Inventory"].fillna(0)
+
+    inventory_source = "CSV Inventory"
+
+else:
+
+    inventory_source = "Manual Inventory"
 # =========================================================
 # FILTERS
 # =========================================================
@@ -678,6 +700,30 @@ if "Product" in filtered_df.columns:
 
             product_forecast = 0
 
+        # -----------------------------------------------------
+# CURRENT STOCK SOURCE
+# -----------------------------------------------------
+if "Inventory" in filtered_df.columns:
+
+    stock_values = pd.to_numeric(
+        product_data["Inventory"],
+        errors="coerce"
+    ).dropna()
+
+    if len(stock_values) > 0:
+
+        current_stock = float(
+            stock_values.iloc[-1]
+        )
+
+        st.caption(
+            f"📦 {product}: "
+            f"{current_stock:,.0f} units "
+            "(from CSV)"
+        )
+
+    else:
+
         current_stock = st.number_input(
             f"📦 {product} — Current Stock",
             min_value=0,
@@ -685,6 +731,16 @@ if "Product" in filtered_df.columns:
             step=10,
             key=f"stock_{product}"
         )
+
+else:
+
+    current_stock = st.number_input(
+        f"📦 {product} — Current Stock",
+        min_value=0,
+        value=100,
+        step=10,
+        key=f"stock_{product}"
+    )
 
         if len(product_daily) > 1:
 
@@ -899,7 +955,49 @@ if "Product" in filtered_df.columns:
         .to_csv(index=False)
         .encode("utf-8")
     )
+    # -----------------------------------------------------
+# EXCEL REPORT
+# -----------------------------------------------------
+from io import BytesIO
 
+excel_buffer = BytesIO()
+
+with pd.ExcelWriter(
+    excel_buffer,
+    engine="openpyxl"
+) as writer:
+
+    inventory_df.to_excel(
+        writer,
+        index=False,
+        sheet_name="Inventory Report"
+    )
+
+    if "Product" in filtered_df.columns:
+
+        product_summary.reset_index().to_excel(
+            writer,
+            index=False,
+            sheet_name="Product Analytics"
+        )
+
+    daily_sales.reset_index().to_excel(
+        writer,
+        index=False,
+        sheet_name="Demand Trend"
+    )
+
+excel_buffer.seek(0)
+
+st.download_button(
+    "📊 Download Excel Business Report",
+    data=excel_buffer,
+    file_name="foresight_business_report.xlsx",
+    mime=(
+        "application/vnd.openxmlformats-officedocument."
+        "spreadsheetml.sheet"
+    )
+)
     st.download_button(
         "⬇️ Download Inventory Report",
         inventory_csv,
