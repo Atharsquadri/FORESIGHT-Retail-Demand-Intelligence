@@ -284,7 +284,7 @@ st.line_chart(
 )
 
 # ---------------------------------------------------------
-# FORECAST
+# PROFESSIONAL DEMAND FORECAST
 # ---------------------------------------------------------
 st.markdown(
     '<div class="section-title">🤖 Demand Forecast</div>',
@@ -300,32 +300,171 @@ forecast_days = st.slider(
 
 if len(daily_sales) >= 7:
 
-    window = min(14, len(daily_sales))
+    # ---------------------------------------------
+    # RECENT DEMAND
+    # ---------------------------------------------
+    recent_window = min(14, len(daily_sales))
+    previous_window = min(14, max(0, len(daily_sales) - recent_window))
 
-    moving_average = daily_sales.tail(window).mean()
+    recent_demand = daily_sales.tail(recent_window).mean()
 
+    if previous_window > 0:
+        previous_demand = (
+            daily_sales.iloc[-(recent_window + previous_window):-recent_window]
+            .mean()
+        )
+    else:
+        previous_demand = recent_demand
+
+    # ---------------------------------------------
+    # DEMAND TREND
+    # ---------------------------------------------
+    if previous_demand != 0:
+        trend_percent = (
+            (recent_demand - previous_demand)
+            / previous_demand
+        ) * 100
+    else:
+        trend_percent = 0
+
+    # Limit extreme trend impact
+    trend_percent = max(-20, min(trend_percent, 20))
+
+    # ---------------------------------------------
+    # TREND-ADJUSTED FORECAST
+    # ---------------------------------------------
+    trend_factor = 1 + (trend_percent / 100)
+
+    forecast_values = []
+
+    for day in range(1, forecast_days + 1):
+
+        # Gradually apply trend instead of jumping immediately
+        progress = day / forecast_days
+
+        forecast_value = (
+            recent_demand *
+            (1 + ((trend_factor - 1) * progress))
+        )
+
+        # Keep forecast within reasonable historical range
+        historical_min = daily_sales.min()
+        historical_max = daily_sales.max()
+
+        forecast_value = max(
+            historical_min,
+            min(forecast_value, historical_max)
+        )
+
+        forecast_values.append(forecast_value)
+
+    # ---------------------------------------------
+    # FUTURE DATES
+    # ---------------------------------------------
     forecast_dates = pd.date_range(
         start=daily_sales.index.max() + pd.Timedelta(days=1),
         periods=forecast_days
     )
 
     forecast_df = pd.DataFrame({
-        "Forecast": [
-            moving_average
-            for _ in range(forecast_days)
-        ]
+        "Forecast": forecast_values
     }, index=forecast_dates)
 
+    # ---------------------------------------------
+    # FORECAST CHART
+    # ---------------------------------------------
     st.line_chart(
         forecast_df,
         height=300
     )
 
-    st.info(
-        f"Forecast is based on the latest {window} days "
-        f"of observed demand."
+    # ---------------------------------------------
+    # FORECAST SUMMARY
+    # ---------------------------------------------
+    forecast_average = forecast_df["Forecast"].mean()
+    forecast_peak = forecast_df["Forecast"].max()
+
+    fcol1, fcol2, fcol3 = st.columns(3)
+
+    with fcol1:
+        st.metric(
+            "Forecast / Day",
+            f"{forecast_average:,.0f}"
+        )
+
+    with fcol2:
+        st.metric(
+            "Forecast Peak",
+            f"{forecast_peak:,.0f}"
+        )
+
+    with fcol3:
+        st.metric(
+            "Demand Trend",
+            f"{trend_percent:+.1f}%"
+        )
+
+    # ---------------------------------------------
+    # FORECAST TABLE
+    # ---------------------------------------------
+    st.markdown("### 📅 Forecast Details")
+
+    forecast_table = forecast_df.reset_index()
+
+    forecast_table.columns = [
+        "Date",
+        "Forecast Demand"
+    ]
+
+    forecast_table["Date"] = (
+        forecast_table["Date"]
+        .dt.strftime("%d %b %Y")
     )
 
+    forecast_table["Forecast Demand"] = (
+        forecast_table["Forecast Demand"]
+        .round(0)
+        .astype(int)
+    )
+
+    st.dataframe(
+        forecast_table,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # ---------------------------------------------
+    # FORECAST INTERPRETATION
+    # ---------------------------------------------
+    if trend_percent > 5:
+
+        st.warning(
+            f"📈 Demand is trending upward by approximately "
+            f"{trend_percent:.1f}%. Consider increasing "
+            f"replenishment before the forecast period."
+        )
+
+    elif trend_percent < -5:
+
+        st.info(
+            f"📉 Demand is trending downward by approximately "
+            f"{abs(trend_percent):.1f}%. Consider controlling "
+            f"new inventory commitments."
+        )
+
+    else:
+
+        st.success(
+            "➡️ Demand is relatively stable. "
+            "Maintain normal replenishment levels."
+        )
+
+else:
+
+    st.warning(
+        "Not enough historical data for forecasting. "
+        "At least 7 days of sales data are required."
+    )
 # ---------------------------------------------------------
 # PRODUCT PERFORMANCE
 # ---------------------------------------------------------
