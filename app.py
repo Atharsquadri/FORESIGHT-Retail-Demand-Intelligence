@@ -507,6 +507,10 @@ if "Product" in filtered_df.columns:
 # ---------------------------------------------------------
 # CURRENT STOCK INPUT
 # ---------------------------------------------------------
+lead_time_days = 7
+service_buffer = 25
+target_days = 14
+
 st.markdown("### 📦 Current Inventory")
 
 if "Product" in filtered_df.columns:
