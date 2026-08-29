@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
+from io import BytesIO
 
 # =========================================================
 # PAGE CONFIG
@@ -21,38 +22,47 @@ TARGET_STOCK_DAYS = 14
 # =========================================================
 # STYLE
 # =========================================================
-st.markdown("""
-<style>
-.hero {
-    padding: 1rem 0 0.5rem 0;
-}
-.hero h1 {
-    font-size: 44px;
-    font-weight: 800;
-    margin-bottom: 0;
-}
-.hero p {
-    font-size: 18px;
-    color: #777;
-}
-.section-title {
-    font-size: 25px;
-    font-weight: 700;
-    margin-top: 25px;
-    margin-bottom: 12px;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    .hero {
+        padding: 1rem 0 0.5rem 0;
+    }
+
+    .hero h1 {
+        font-size: 44px;
+        font-weight: 800;
+        margin-bottom: 0;
+    }
+
+    .hero p {
+        font-size: 18px;
+        color: #777;
+    }
+
+    .section-title {
+        font-size: 25px;
+        font-weight: 700;
+        margin-top: 25px;
+        margin-bottom: 12px;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # =========================================================
 # HEADER
 # =========================================================
-st.markdown("""
-<div class="hero">
-    <h1>FORESIGHT</h1>
-    <p>Retail Demand Intelligence Platform</p>
-</div>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <div class="hero">
+        <h1>FORESIGHT</h1>
+        <p>Retail Demand Intelligence Platform</p>
+    </div>
+    """,
+    unsafe_allow_html=True
+)
 
 st.divider()
 
@@ -102,6 +112,14 @@ def create_demo_data():
         "Product E": 599
     }
 
+    inventory = {
+        "Product A": 100,
+        "Product B": 150,
+        "Product C": 120,
+        "Product D": 200,
+        "Product E": 180
+    }
+
     data = []
 
     for date in dates:
@@ -115,19 +133,20 @@ def create_demo_data():
 
             demand += np.random.normal(0, 25)
 
-            demand = max(
-                0,
-                int(demand)
+            demand = max(0, int(demand))
+
+            data.append(
+                {
+                    "Date": date,
+                    "Product": product,
+                    "Sales": demand,
+                    "Price": prices[product],
+                    "Inventory": inventory[product]
+                }
             )
 
-            data.append({
-                "Date": date,
-                "Product": product,
-                "Sales": demand,
-                "Price": prices[product]
-            })
-
     return pd.DataFrame(data)
+
 
 # =========================================================
 # LOAD DATA
@@ -135,48 +154,54 @@ def create_demo_data():
 if uploaded_file is not None:
 
     try:
+
         df = pd.read_csv(uploaded_file)
-        st.sidebar.success("✅ CSV loaded")
-if "Inventory" in df.columns:
-    st.sidebar.success("📦 Inventory column detected")
-else:
-    st.sidebar.info(
-        "📦 No Inventory column found. "
-        "Manual stock input will be used."
-    )
-    except Exception:
-        st.error("Unable to read CSV.")
+
+        st.sidebar.success("✅ CSV loaded successfully")
+
+    except Exception as e:
+
+        st.error(f"Unable to read CSV: {e}")
         st.stop()
 
 else:
 
     df = create_demo_data()
 
-    st.sidebar.info(
-        "Demo data active"
-    )
+    st.sidebar.info("Demo data active")
+
 
 # =========================================================
 # VALIDATION
 # =========================================================
-required = ["Date", "Sales"]
+required = [
+    "Date",
+    "Sales"
+]
 
 missing = [
-    c for c in required
-    if c not in df.columns
+    column
+    for column in required
+    if column not in df.columns
 ]
 
 if missing:
 
     st.error(
-        "Missing column(s): "
+        "Missing required column(s): "
         + ", ".join(missing)
+    )
+
+    st.info(
+        "Required format: Date, Sales. "
+        "Recommended: Product, Price, Inventory."
     )
 
     st.stop()
 
+
 # =========================================================
-# CLEANING
+# CLEAN DATA
 # =========================================================
 df["Date"] = pd.to_datetime(
     df["Date"],
@@ -192,6 +217,18 @@ df = df.dropna(
     subset=["Date", "Sales"]
 ).copy()
 
+
+# =========================================================
+# PRODUCT COLUMN
+# =========================================================
+if "Product" not in df.columns:
+
+    df["Product"] = "All Products"
+
+
+# =========================================================
+# PRICE / REVENUE
+# =========================================================
 if "Price" in df.columns:
 
     df["Price"] = pd.to_numeric(
@@ -207,25 +244,21 @@ if "Price" in df.columns:
 else:
 
     df["Revenue"] = 0
+
+
 # =========================================================
-# INVENTORY DATA SUPPORT
+# INVENTORY CLEANING
 # =========================================================
 if "Inventory" in df.columns:
 
     df["Inventory"] = pd.to_numeric(
         df["Inventory"],
         errors="coerce"
-    )
+    ).fillna(0)
 
-    df["Inventory"] = df["Inventory"].fillna(0)
 
-    inventory_source = "CSV Inventory"
-
-else:
-
-    inventory_source = "Manual Inventory"
 # =========================================================
-# FILTERS
+# SIDEBAR FILTERS
 # =========================================================
 st.sidebar.subheader("🔎 Filters")
 
@@ -239,12 +272,16 @@ date_range = st.sidebar.date_input(
     max_value=max_date
 )
 
-if isinstance(date_range, tuple) and len(date_range) == 2:
+if (
+    isinstance(date_range, tuple)
+    and len(date_range) == 2
+):
 
     start_date, end_date = date_range
 
     filtered_df = df[
-        (df["Date"].dt.date >= start_date) &
+        (df["Date"].dt.date >= start_date)
+        &
         (df["Date"].dt.date <= end_date)
     ].copy()
 
@@ -252,29 +289,35 @@ else:
 
     filtered_df = df.copy()
 
-if "Product" in filtered_df.columns:
 
-    products = sorted(
+# =========================================================
+# PRODUCT FILTER
+# =========================================================
+products = sorted(
+    filtered_df["Product"]
+    .dropna()
+    .astype(str)
+    .unique()
+)
+
+selected_products = st.sidebar.multiselect(
+    "Products",
+    products,
+    default=products
+)
+
+if selected_products:
+
+    filtered_df = filtered_df[
         filtered_df["Product"]
-        .dropna()
         .astype(str)
-        .unique()
-    )
+        .isin(selected_products)
+    ].copy()
 
-    selected_products = st.sidebar.multiselect(
-        "Products",
-        products,
-        default=products
-    )
 
-    if selected_products:
-
-        filtered_df = filtered_df[
-            filtered_df["Product"]
-            .astype(str)
-            .isin(selected_products)
-        ]
-
+# =========================================================
+# EMPTY CHECK
+# =========================================================
 if filtered_df.empty:
 
     st.warning(
@@ -282,6 +325,7 @@ if filtered_df.empty:
     )
 
     st.stop()
+
 
 # =========================================================
 # DAILY DEMAND
@@ -294,11 +338,22 @@ daily_sales = (
 )
 
 total_sales = daily_sales.sum()
-average_daily = daily_sales.mean()
-peak_daily = daily_sales.max()
+
+average_daily = (
+    daily_sales.mean()
+    if len(daily_sales) > 0
+    else 0
+)
+
+peak_daily = (
+    daily_sales.max()
+    if len(daily_sales) > 0
+    else 0
+)
+
 
 # =========================================================
-# EXECUTIVE KPIs
+# EXECUTIVE OVERVIEW
 # =========================================================
 st.markdown(
     '<div class="section-title">'
@@ -310,18 +365,21 @@ st.markdown(
 k1, k2, k3, k4, k5 = st.columns(5)
 
 with k1:
+
     st.metric(
         "Total Units",
         f"{total_sales:,.0f}"
     )
 
 with k2:
+
     st.metric(
         "Avg Daily Demand",
         f"{average_daily:,.0f}"
     )
 
 with k3:
+
     st.metric(
         "Peak Demand",
         f"{peak_daily:,.0f}"
@@ -332,30 +390,36 @@ with k4:
     revenue = filtered_df["Revenue"].sum()
 
     if revenue > 0:
+
         st.metric(
             "Revenue",
             f"₹{revenue:,.0f}"
         )
+
     else:
+
         st.metric(
             "Products",
             str(
                 filtered_df["Product"].nunique()
-                if "Product" in filtered_df.columns
-                else 0
             )
         )
 
 with k5:
 
-    recent = daily_sales.tail(
-        min(14, len(daily_sales))
-    ).mean()
+    recent_forecast = (
+        daily_sales.tail(
+            min(14, len(daily_sales))
+        ).mean()
+        if len(daily_sales) > 0
+        else 0
+    )
 
     st.metric(
         "Current Forecast",
-        f"{recent:,.0f}"
+        f"{recent_forecast:,.0f}"
     )
+
 
 # =========================================================
 # DEMAND TREND
@@ -372,8 +436,9 @@ st.line_chart(
     height=350
 )
 
+
 # =========================================================
-# AI-STYLE FORECASTING
+# AI DEMAND FORECAST
 # =========================================================
 st.markdown(
     '<div class="section-title">'
@@ -388,17 +453,12 @@ forecast_days = st.select_slider(
     value=14
 )
 
+
 if len(daily_sales) >= 14:
 
-    recent_window = 14
+    recent_data = daily_sales.tail(14)
 
-    recent_data = daily_sales.tail(
-        recent_window
-    )
-
-    previous_data = daily_sales.iloc[
-        -28:-14
-    ]
+    previous_data = daily_sales.iloc[-28:-14]
 
     recent_avg = recent_data.mean()
 
@@ -422,7 +482,6 @@ if len(daily_sales) >= 14:
 
         trend_pct = 0
 
-    # Prevent unrealistic forecast jumps
     trend_pct = max(
         -20,
         min(trend_pct, 20)
@@ -434,6 +493,7 @@ if len(daily_sales) >= 14:
     volatility = recent_data.std()
 
     if pd.isna(volatility):
+
         volatility = 0
 
     # -----------------------------------------------------
@@ -449,14 +509,14 @@ if len(daily_sales) >= 14:
         progress = day / forecast_days
 
         trend_factor = (
-            1 +
-            (trend_pct / 100)
+            1
+            + (trend_pct / 100)
             * progress
         )
 
         value = (
-            recent_avg *
-            trend_factor
+            recent_avg
+            * trend_factor
         )
 
         forecast_values.append(
@@ -519,28 +579,33 @@ if len(daily_sales) >= 14:
     )
 
     upper_forecast = (
-        forecast_avg + confidence_margin
+        forecast_avg
+        + confidence_margin
     )
 
     with f1:
+
         st.metric(
             "Forecast / Day",
             f"{forecast_avg:,.0f}"
         )
 
     with f2:
+
         st.metric(
             f"{forecast_days}-Day Demand",
             f"{forecast_total:,.0f}"
         )
 
     with f3:
+
         st.metric(
             "Trend",
             f"{trend_pct:+.1f}%"
         )
 
     with f4:
+
         st.metric(
             "Forecast Range",
             f"{lower_forecast:,.0f}"
@@ -577,69 +642,69 @@ else:
 
     st.warning(
         "At least 14 days of data are recommended "
-        "for the advanced forecast."
+        "for forecasting."
     )
+
 
 # =========================================================
 # PRODUCT ANALYTICS
 # =========================================================
-if "Product" in filtered_df.columns:
+st.markdown(
+    '<div class="section-title">'
+    '🏆 Product Analytics'
+    '</div>',
+    unsafe_allow_html=True
+)
 
-    st.markdown(
-        '<div class="section-title">'
-        '🏆 Product Analytics'
-        '</div>',
-        unsafe_allow_html=True
+product_summary = (
+    filtered_df
+    .groupby("Product")
+    .agg(
+        Units_Sold=("Sales", "sum"),
+        Revenue=("Revenue", "sum")
     )
-
-    product_summary = (
-        filtered_df
-        .groupby("Product")
-        .agg(
-            Units_Sold=("Sales", "sum"),
-            Revenue=("Revenue", "sum")
-        )
-        .sort_values(
-            "Units_Sold",
-            ascending=False
-        )
+    .sort_values(
+        "Units_Sold",
+        ascending=False
     )
+)
 
-    st.bar_chart(
-        product_summary["Units_Sold"],
-        height=350
-    )
+st.bar_chart(
+    product_summary["Units_Sold"],
+    height=350
+)
 
-    product_table = (
-        product_summary
-        .reset_index()
-    )
+product_table = (
+    product_summary
+    .reset_index()
+)
 
-    product_table.columns = [
-        "Product",
-        "Units Sold",
-        "Revenue"
-    ]
+product_table.columns = [
+    "Product",
+    "Units Sold",
+    "Revenue"
+]
 
-    total_units = (
-        product_table["Units Sold"].sum()
-    )
+total_units = (
+    product_table["Units Sold"].sum()
+)
 
-    if total_units > 0:
+if total_units > 0:
 
-        product_table[
-            "Sales Share (%)"
-        ] = (
-            product_table["Units Sold"]
-            / total_units
-            * 100
-        ).round(1)
+    product_table[
+        "Sales Share (%)"
+    ] = (
+        product_table["Units Sold"]
+        / total_units
+        * 100
+    ).round(1)
 
-    st.dataframe(
-        product_table,
-        use_container_width=True,
-        hide_index=True
-    )
+st.dataframe(
+    product_table,
+    use_container_width=True,
+    hide_index=True
+)
+
 
 # =========================================================
 # SMART INVENTORY
@@ -652,75 +717,86 @@ st.markdown(
 )
 
 st.caption(
-    f"Supplier Lead Time: {LEAD_TIME_DAYS} days | "
-    f"Safety Buffer: {SAFETY_BUFFER:.0%} | "
-    f"Target Coverage: {TARGET_STOCK_DAYS} days"
+    f"Supplier Lead Time: "
+    f"{LEAD_TIME_DAYS} days | "
+    f"Safety Buffer: "
+    f"{SAFETY_BUFFER:.0%} | "
+    f"Target Coverage: "
+    f"{TARGET_STOCK_DAYS} days"
 )
 
-if "Product" in filtered_df.columns:
 
-    inventory_data = []
+inventory_data = []
 
-    inventory_products = sorted(
+inventory_products = sorted(
+    filtered_df["Product"]
+    .dropna()
+    .astype(str)
+    .unique()
+)
+
+
+for product in inventory_products:
+
+    product_data = filtered_df[
         filtered_df["Product"]
-        .dropna()
         .astype(str)
-        .unique()
+        == product
+    ].copy()
+
+    product_daily = (
+        product_data
+        .groupby("Date")["Sales"]
+        .sum()
+        .sort_index()
     )
 
-    for product in inventory_products:
+    # -----------------------------------------------------
+    # PRODUCT FORECAST
+    # -----------------------------------------------------
+    if len(product_daily) > 0:
 
-        product_data = filtered_df[
-            filtered_df["Product"]
-            .astype(str)
-            == product
-        ]
-
-        product_daily = (
-            product_data
-            .groupby("Date")["Sales"]
-            .sum()
-            .sort_index()
+        product_forecast = (
+            product_daily
+            .tail(
+                min(
+                    14,
+                    len(product_daily)
+                )
+            )
+            .mean()
         )
 
-        if len(product_daily) > 0:
+    else:
 
-            product_forecast = (
-                product_daily
-                .tail(
-                    min(
-                        14,
-                        len(product_daily)
-                    )
-                )
-                .mean()
+        product_forecast = 0
+
+
+    # -----------------------------------------------------
+    # CURRENT STOCK
+    # -----------------------------------------------------
+    if "Inventory" in filtered_df.columns:
+
+        inventory_values = (
+            product_data["Inventory"]
+            .dropna()
+        )
+
+        if len(inventory_values) > 0:
+
+            current_stock = int(
+                inventory_values.iloc[-1]
             )
 
         else:
 
-            product_forecast = 0
-
-        # -----------------------------------------------------
-# CURRENT STOCK SOURCE
-# -----------------------------------------------------
-if "Inventory" in filtered_df.columns:
-
-    stock_values = pd.to_numeric(
-        product_data["Inventory"],
-        errors="coerce"
-    ).dropna()
-
-    if len(stock_values) > 0:
-
-        current_stock = float(
-            stock_values.iloc[-1]
-        )
-
-        st.caption(
-            f"📦 {product}: "
-            f"{current_stock:,.0f} units "
-            "(from CSV)"
-        )
+            current_stock = st.number_input(
+                f"📦 {product} — Current Stock",
+                min_value=0,
+                value=100,
+                step=10,
+                key=f"stock_{product}"
+            )
 
     else:
 
@@ -732,278 +808,335 @@ if "Inventory" in filtered_df.columns:
             key=f"stock_{product}"
         )
 
-else:
 
-    current_stock = st.number_input(
-        f"📦 {product} — Current Stock",
-        min_value=0,
-        value=100,
-        step=10,
-        key=f"stock_{product}"
+    # -----------------------------------------------------
+    # DEMAND VARIABILITY
+    # -----------------------------------------------------
+    if len(product_daily) > 1:
+
+        demand_std = product_daily.std()
+
+    else:
+
+        demand_std = 0
+
+
+    if pd.isna(demand_std):
+
+        demand_std = 0
+
+
+    # -----------------------------------------------------
+    # SAFETY STOCK
+    # -----------------------------------------------------
+    safety_stock = (
+        demand_std
+        * np.sqrt(LEAD_TIME_DAYS)
+        * SAFETY_BUFFER
     )
 
-        if len(product_daily) > 1:
 
-            demand_std = product_daily.std()
+    # -----------------------------------------------------
+    # REORDER POINT
+    # -----------------------------------------------------
+    reorder_point = (
+        product_forecast
+        * LEAD_TIME_DAYS
+        + safety_stock
+    )
 
-        else:
 
-            demand_std = 0
+    # -----------------------------------------------------
+    # TARGET INVENTORY
+    # -----------------------------------------------------
+    target_inventory = (
+        product_forecast
+        * TARGET_STOCK_DAYS
+        + safety_stock
+    )
 
-        if pd.isna(demand_std):
-            demand_std = 0
 
-        safety_stock = (
-            demand_std
-            * np.sqrt(LEAD_TIME_DAYS)
-            * SAFETY_BUFFER
-        )
-
-        reorder_point = (
-            product_forecast
-            * LEAD_TIME_DAYS
-            + safety_stock
-        )
-
-        target_inventory = (
-            product_forecast
-            * TARGET_STOCK_DAYS
-            + safety_stock
-        )
-
-        recommended_order = max(
-            0,
-            int(
-                np.ceil(
-                    target_inventory
-                    - current_stock
-                )
+    # -----------------------------------------------------
+    # RECOMMENDED ORDER
+    # -----------------------------------------------------
+    recommended_order = max(
+        0,
+        int(
+            np.ceil(
+                target_inventory
+                - current_stock
             )
         )
-
-        if product_forecast > 0:
-
-            days_cover = (
-                current_stock
-                / product_forecast
-            )
-
-        else:
-
-            days_cover = 999
-
-        if current_stock <= reorder_point:
-
-            status = "🔴 ORDER NOW"
-
-        elif current_stock <= reorder_point * 1.25:
-
-            status = "🟡 MONITOR"
-
-        else:
-
-            status = "🟢 STOCK OK"
-
-        inventory_data.append(
-            {
-                "Product": product,
-                "Current Stock": int(
-                    current_stock
-                ),
-                "Daily Forecast": round(
-                    product_forecast
-                ),
-                "Safety Stock": round(
-                    safety_stock
-                ),
-                "Reorder Point": round(
-                    reorder_point
-                ),
-                "Days of Cover": round(
-                    days_cover,
-                    1
-                ),
-                "Recommended Order": (
-                    recommended_order
-                ),
-                "Status": status
-            }
-        )
-
-    inventory_df = pd.DataFrame(
-        inventory_data
     )
 
-    st.markdown(
-        "### 📦 Inventory Status"
-    )
-
-    st.dataframe(
-        inventory_df,
-        use_container_width=True,
-        hide_index=True
-    )
 
     # -----------------------------------------------------
-    # INVENTORY KPIs
+    # DAYS OF COVER
     # -----------------------------------------------------
-    current_total = (
-        inventory_df["Current Stock"].sum()
-    )
+    if product_forecast > 0:
 
-    safety_total = (
-        inventory_df["Safety Stock"].sum()
-    )
-
-    order_total = (
-        inventory_df["Recommended Order"].sum()
-    )
-
-    order_now = (
-        inventory_df["Status"]
-        .eq("🔴 ORDER NOW")
-        .sum()
-    )
-
-    monitor = (
-        inventory_df["Status"]
-        .eq("🟡 MONITOR")
-        .sum()
-    )
-
-    ok = (
-        inventory_df["Status"]
-        .eq("🟢 STOCK OK")
-        .sum()
-    )
-
-    i1, i2, i3, i4 = st.columns(4)
-
-    with i1:
-        st.metric(
-            "Current Stock",
-            f"{current_total:,.0f}"
-        )
-
-    with i2:
-        st.metric(
-            "Safety Stock",
-            f"{safety_total:,.0f}"
-        )
-
-    with i3:
-        st.metric(
-            "Recommended Order",
-            f"{order_total:,.0f}"
-        )
-
-    with i4:
-        st.metric(
-            "Order Now",
-            str(order_now)
-        )
-
-    # -----------------------------------------------------
-    # ORDER ALERT
-    # -----------------------------------------------------
-    if order_now > 0:
-
-        st.error(
-            f"🚨 {order_now} product(s) "
-            "require immediate reordering."
-        )
-
-        urgent = inventory_df[
-            inventory_df["Status"]
-            == "🔴 ORDER NOW"
-        ]
-
-        st.dataframe(
-            urgent[
-                [
-                    "Product",
-                    "Current Stock",
-                    "Daily Forecast",
-                    "Reorder Point",
-                    "Days of Cover",
-                    "Recommended Order"
-                ]
-            ],
-            use_container_width=True,
-            hide_index=True
+        days_cover = (
+            current_stock
+            / product_forecast
         )
 
     else:
 
-        st.success(
-            "✅ No product currently requires "
-            "immediate reordering."
-        )
+        days_cover = 999
 
-    if monitor > 0:
-
-        st.warning(
-            f"🟡 {monitor} product(s) "
-            "should be monitored."
-        )
 
     # -----------------------------------------------------
-    # DOWNLOAD
+    # STATUS
     # -----------------------------------------------------
-    inventory_csv = (
-        inventory_df
-        .to_csv(index=False)
-        .encode("utf-8")
+    if current_stock <= reorder_point:
+
+        status = "🔴 ORDER NOW"
+
+    elif current_stock <= reorder_point * 1.25:
+
+        status = "🟡 MONITOR"
+
+    else:
+
+        status = "🟢 STOCK OK"
+
+
+    inventory_data.append(
+        {
+            "Product": product,
+            "Current Stock": int(
+                current_stock
+            ),
+            "Daily Forecast": round(
+                product_forecast
+            ),
+            "Safety Stock": round(
+                safety_stock
+            ),
+            "Reorder Point": round(
+                reorder_point
+            ),
+            "Days of Cover": round(
+                days_cover,
+                1
+            ),
+            "Recommended Order": (
+                recommended_order
+            ),
+            "Status": status
+        }
     )
-    # -----------------------------------------------------
-# EXCEL REPORT
-# -----------------------------------------------------
-from io import BytesIO
 
-excel_buffer = BytesIO()
 
-with pd.ExcelWriter(
-    excel_buffer,
-    engine="openpyxl"
-) as writer:
+# =========================================================
+# INVENTORY DATAFRAME
+# =========================================================
+inventory_df = pd.DataFrame(
+    inventory_data
+)
 
-    inventory_df.to_excel(
-        writer,
-        index=False,
-        sheet_name="Inventory Report"
+
+st.markdown(
+    "### 📦 Inventory Status"
+)
+
+st.dataframe(
+    inventory_df,
+    use_container_width=True,
+    hide_index=True
+)
+
+
+# =========================================================
+# INVENTORY KPIs
+# =========================================================
+current_total = (
+    inventory_df["Current Stock"].sum()
+)
+
+safety_total = (
+    inventory_df["Safety Stock"].sum()
+)
+
+order_total = (
+    inventory_df["Recommended Order"].sum()
+)
+
+order_now = (
+    inventory_df["Status"]
+    .eq("🔴 ORDER NOW")
+    .sum()
+)
+
+monitor = (
+    inventory_df["Status"]
+    .eq("🟡 MONITOR")
+    .sum()
+)
+
+ok = (
+    inventory_df["Status"]
+    .eq("🟢 STOCK OK")
+    .sum()
+)
+
+
+i1, i2, i3, i4 = st.columns(4)
+
+with i1:
+
+    st.metric(
+        "Current Stock",
+        f"{current_total:,.0f}"
     )
 
-    if "Product" in filtered_df.columns:
+with i2:
 
-        product_summary.reset_index().to_excel(
-            writer,
-            index=False,
-            sheet_name="Product Analytics"
-        )
-
-    daily_sales.reset_index().to_excel(
-        writer,
-        index=False,
-        sheet_name="Demand Trend"
+    st.metric(
+        "Safety Stock",
+        f"{safety_total:,.0f}"
     )
 
-excel_buffer.seek(0)
+with i3:
+
+    st.metric(
+        "Recommended Order",
+        f"{order_total:,.0f}"
+    )
+
+with i4:
+
+    st.metric(
+        "Order Now",
+        str(order_now)
+    )
+
+
+# =========================================================
+# ORDER ALERT
+# =========================================================
+if order_now > 0:
+
+    st.error(
+        f"🚨 {order_now} product(s) "
+        "require immediate reordering."
+    )
+
+    urgent = inventory_df[
+        inventory_df["Status"]
+        == "🔴 ORDER NOW"
+    ]
+
+    st.dataframe(
+        urgent[
+            [
+                "Product",
+                "Current Stock",
+                "Daily Forecast",
+                "Reorder Point",
+                "Days of Cover",
+                "Recommended Order"
+            ]
+        ],
+        use_container_width=True,
+        hide_index=True
+    )
+
+else:
+
+    st.success(
+        "✅ No product currently requires "
+        "immediate reordering."
+    )
+
+
+if monitor > 0:
+
+    st.warning(
+        f"🟡 {monitor} product(s) "
+        "should be monitored."
+    )
+
+
+# =========================================================
+# INVENTORY CSV DOWNLOAD
+# =========================================================
+inventory_csv = (
+    inventory_df
+    .to_csv(index=False)
+    .encode("utf-8")
+)
 
 st.download_button(
-    "📊 Download Excel Business Report",
-    data=excel_buffer,
-    file_name="foresight_business_report.xlsx",
-    mime=(
-        "application/vnd.openxmlformats-officedocument."
-        "spreadsheetml.sheet"
-    )
+    "⬇️ Download Inventory CSV",
+    inventory_csv,
+    "foresight_inventory_report.csv",
+    "text/csv"
 )
-    st.download_button(
-        "⬇️ Download Inventory Report",
-        inventory_csv,
-        "foresight_inventory_report.csv",
-        "text/csv"
-    )
+
+
+# =========================================================
+# EXCEL REPORT
+# =========================================================
+def create_excel_report():
+
+    output = BytesIO()
+
+    with pd.ExcelWriter(
+        output,
+        engine="openpyxl"
+    ) as writer:
+
+        product_table.to_excel(
+            writer,
+            sheet_name="Product Analytics",
+            index=False
+        )
+
+        inventory_df.to_excel(
+            writer,
+            sheet_name="Inventory",
+            index=False
+        )
+
+        filtered_df.to_excel(
+            writer,
+            sheet_name="Sales Data",
+            index=False
+        )
+
+        if "forecast_df" in globals():
+
+            forecast_export = (
+                forecast_df
+                .reset_index()
+            )
+
+            forecast_export.columns = [
+                "Date",
+                "Forecast"
+            ]
+
+            forecast_export.to_excel(
+                writer,
+                sheet_name="Forecast",
+                index=False
+            )
+
+    output.seek(0)
+
+    return output
+
+
+excel_file = create_excel_report()
+
+st.download_button(
+    "📥 Download Complete Excel Report",
+    excel_file,
+    "foresight_complete_report.xlsx",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
 
 # =========================================================
 # BUSINESS INSIGHTS
@@ -1017,6 +1150,10 @@ st.markdown(
 
 b1, b2, b3 = st.columns(3)
 
+
+# ---------------------------------------------------------
+# DEMAND INSIGHT
+# ---------------------------------------------------------
 with b1:
 
     st.markdown("### 📈 Demand")
@@ -1024,11 +1161,15 @@ with b1:
     if len(daily_sales) >= 28:
 
         recent_avg = (
-            daily_sales.tail(14).mean()
+            daily_sales
+            .tail(14)
+            .mean()
         )
 
         old_avg = (
-            daily_sales.iloc[-28:-14].mean()
+            daily_sales
+            .iloc[-28:-14]
+            .mean()
         )
 
         if old_avg != 0:
@@ -1046,7 +1187,8 @@ with b1:
         if change > 5:
 
             st.warning(
-                f"Demand rising by {change:.1f}%."
+                f"Demand rising by "
+                f"{change:.1f}%."
             )
 
         elif change < -5:
@@ -1069,56 +1211,60 @@ with b1:
         )
 
 
+# ---------------------------------------------------------
+# BEST SELLER
+# ---------------------------------------------------------
 with b2:
 
     st.markdown("### 🏆 Best Seller")
 
-    if "Product" in filtered_df.columns:
+    best_product = (
+        filtered_df
+        .groupby("Product")["Sales"]
+        .sum()
+        .idxmax()
+    )
 
-        best = (
-            filtered_df
-            .groupby("Product")["Sales"]
-            .sum()
-            .idxmax()
-        )
+    best_sales = (
+        filtered_df
+        .groupby("Product")["Sales"]
+        .sum()
+        .max()
+    )
 
-        best_sales = (
-            filtered_df
-            .groupby("Product")["Sales"]
-            .sum()
-            .max()
-        )
-
-        st.success(
-            f"{best}: {best_sales:,.0f} units"
-        )
+    st.success(
+        f"{best_product}: "
+        f"{best_sales:,.0f} units"
+    )
 
 
+# ---------------------------------------------------------
+# INVENTORY ACTION
+# ---------------------------------------------------------
 with b3:
 
     st.markdown("### 🎯 Inventory Action")
 
-    if "Product" in filtered_df.columns:
+    if order_now > 0:
 
-        if order_now > 0:
+        st.error(
+            f"{order_now} product(s) "
+            "need ordering."
+        )
 
-            st.error(
-                f"{order_now} product(s) "
-                "need ordering."
-            )
+    elif monitor > 0:
 
-        elif monitor > 0:
+        st.warning(
+            f"{monitor} product(s) "
+            "need monitoring."
+        )
 
-            st.warning(
-                f"{monitor} product(s) "
-                "need monitoring."
-            )
+    else:
 
-        else:
+        st.success(
+            "Inventory looks healthy."
+        )
 
-            st.success(
-                "Inventory looks healthy."
-            )
 
 # =========================================================
 # RAW DATA
@@ -1131,20 +1277,27 @@ with st.expander("🔍 View Raw Data"):
         hide_index=True
     )
 
+
 # =========================================================
 # CSV FORMAT
 # =========================================================
 with st.expander("📄 Recommended CSV Format"):
 
     st.write(
-        "Your CSV should contain at least:"
+        "Recommended CSV columns:"
     )
 
     st.code(
-        "Date,Product,Sales,Price\n"
-        "2026-01-01,Product A,180,499\n"
-        "2026-01-02,Product A,195,499"
+        "Date,Product,Sales,Price,Inventory\n"
+        "2026-01-01,Product A,180,499,500\n"
+        "2026-01-02,Product A,195,499,480"
     )
+
+    st.caption(
+        "Date and Sales are required. "
+        "Product, Price and Inventory are recommended."
+    )
+
 
 # =========================================================
 # FOOTER
