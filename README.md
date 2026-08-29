@@ -1,41 +1,62 @@
 # FORESIGHT 📊
+### Retail Demand Intelligence & Inventory Decision Support Platform
 
-## Retail Demand Intelligence & AI-Assisted Inventory Decision Support Platform
+FORESIGHT is a retail analytics and inventory decision-support platform built with Python and Streamlit.
 
-FORESIGHT is a retail analytics dashboard designed to help businesses understand demand, forecast future sales, monitor inventory, and make better replenishment decisions.
+It helps businesses analyze historical sales, understand demand trends, estimate future demand, monitor inventory health, calculate reorder points, and generate actionable replenishment recommendations.
 
-## 🚀 Features
+---
 
-- 📊 Executive KPI Dashboard
-- 📈 Historical Demand Trend
-- 🤖 AI-Assisted Demand Forecast
-- 🏆 Product Performance Analytics
-- 📦 Inventory Intelligence
-- 🔴 Order Now Alerts
-- 🟡 Inventory Monitoring
-- 🟢 Stock Health Indicators
-- 🧮 Reorder Point Calculation
-- 📋 Recommended Order Quantity
-- 💰 Revenue Analytics
-- 📤 CSV Sales Data Upload
-- 🔎 Date & Product Filters
-- 📥 Inventory Report Download
-- 💡 Automated Business Insights
+## 🚀 Key Features
 
-## 🛠️ Tech Stack
+### 📊 Executive Dashboard
+- Total units sold
+- Average daily demand
+- Peak demand
+- Revenue analytics
+- Current demand forecast
 
-- Python
-- Streamlit
-- Pandas
-- NumPy
-- GitHub
-- Streamlit Community Cloud
+### 📈 Demand Analytics
+- Historical demand trends
+- Product-level sales analysis
+- Sales share by product
+- Best-selling product identification
 
-## 📁 Project Structure
+### 🤖 Demand Forecasting
+- 7, 14, 21 and 30-day forecast horizons
+- Recent demand trend analysis
+- Forecast range based on demand volatility
+- Automated demand interpretation
+
+### 📦 Inventory Intelligence
+- Current stock monitoring
+- Daily demand forecast
+- Safety stock calculation
+- Reorder point calculation
+- Days of inventory cover
+- Recommended order quantity
+
+### 🚨 Smart Inventory Alerts
+- 🔴 ORDER NOW
+- 🟡 MONITOR
+- 🟢 STOCK OK
+
+### 📤 Data & Reporting
+- CSV sales data upload
+- Date filtering
+- Product filtering
+- Inventory CSV export
+- Excel report generation
+
+---
+
+## 🧮 Inventory Decision Logic
+
+FORESIGHT uses demand and inventory metrics to support replenishment decisions.
+
+### Reorder Point
 
 ```text
-FORESIGHT/
-│
-├── app.py
-├── requirements.txt
-└── README.md
+Reorder Point =
+Daily Forecast × Lead Time
++ Safety Stock
