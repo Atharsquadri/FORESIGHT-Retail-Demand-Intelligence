@@ -504,7 +504,132 @@ if "Product" in filtered_df.columns:
         use_container_width=True,
         hide_index=True
     )
+# ---------------------------------------------------------
+# CURRENT STOCK INPUT
+# ---------------------------------------------------------
+st.markdown("### 📦 Current Inventory")
 
+if "Product" in filtered_df.columns:
+
+    stock_products = sorted(
+        filtered_df["Product"].dropna().unique()
+    )
+
+    stock_data = []
+
+    for product in stock_products:
+
+        product_daily = (
+            filtered_df[
+                filtered_df["Product"] == product
+            ]
+            .groupby("Date")["Sales"]
+            .sum()
+            .sort_index()
+        )
+
+        if len(product_daily) > 0:
+
+            product_forecast = product_daily.tail(
+                min(14, len(product_daily))
+            ).mean()
+
+        else:
+            product_forecast = 0
+
+        current_stock = st.number_input(
+            f"{product} - Current Stock",
+            min_value=0,
+            value=100,
+            step=10,
+            key=f"stock_{product}"
+        )
+
+        product_reorder_point = (
+            product_forecast * lead_time_days
+            + (
+                product_daily.std()
+                * np.sqrt(lead_time_days)
+                * (service_buffer / 100)
+                if len(product_daily) > 1
+                else 0
+            )
+        )
+
+        order_quantity = max(
+            0,
+            int(
+                product_forecast * target_days
+                - current_stock
+            )
+        )
+
+        if current_stock <= product_reorder_point:
+            status = "🔴 ORDER NOW"
+        elif current_stock <= product_reorder_point * 1.25:
+            status = "🟡 MONITOR"
+        else:
+            status = "🟢 STOCK OK"
+
+        stock_data.append({
+            "Product": product,
+            "Current Stock": current_stock,
+            "Daily Forecast": round(product_forecast),
+            "Reorder Point": round(product_reorder_point),
+            "Recommended Order": order_quantity,
+            "Status": status
+        })
+
+    stock_df = pd.DataFrame(stock_data)
+
+    st.dataframe(
+        stock_df,
+        use_container_width=True,
+        hide_index=True
+    )
+
+    # -----------------------------------------------------
+    # ORDER ALERT
+    # -----------------------------------------------------
+    orders_required = stock_df[
+        stock_df["Status"] == "🔴 ORDER NOW"
+    ]
+
+    if len(orders_required) > 0:
+
+        st.error(
+            f"🚨 {len(orders_required)} product(s) "
+            "have reached their reorder point."
+        )
+
+        st.write(
+            "Recommended products to reorder:"
+        )
+
+        st.dataframe(
+            orders_required[
+                [
+                    "Product",
+                    "Current Stock",
+                    "Reorder Point",
+                    "Recommended Order"
+                ]
+            ],
+            use_container_width=True,
+            hide_index=True
+        )
+
+    else:
+
+        st.success(
+            "✅ No product currently requires immediate reordering."
+        )
+
+else:
+
+    st.info(
+        "Product-level inventory alerts require a Product column."
+    )
 # ---------------------------------------------------------
 # SMART INVENTORY INTELLIGENCE
 # ---------------------------------------------------------
