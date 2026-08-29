@@ -506,57 +506,209 @@ if "Product" in filtered_df.columns:
     )
 
 # ---------------------------------------------------------
-# INVENTORY INTELLIGENCE
+# SMART INVENTORY INTELLIGENCE
 # ---------------------------------------------------------
 st.markdown(
-    '<div class="section-title">🚨 Inventory Intelligence</div>',
+    '<div class="section-title">🚨 Smart Inventory Intelligence</div>',
     unsafe_allow_html=True
 )
 
-safety_stock = forecast_demand * 0.25
-recommended_inventory = forecast_demand * 14 + safety_stock
+# ---------------------------------------------------------
+# INVENTORY PARAMETERS
+# ---------------------------------------------------------
+inventory_col1, inventory_col2 = st.columns(2)
 
-col1, col2, col3 = st.columns(3)
-
-with col1:
-    st.metric(
-        "Forecast / Day",
-        f"{forecast_demand:,.0f}"
+with inventory_col1:
+    lead_time_days = st.slider(
+        "Supplier Lead Time (days)",
+        min_value=1,
+        max_value=30,
+        value=7
     )
 
-with col2:
+with inventory_col2:
+    service_buffer = st.slider(
+        "Safety Buffer (%)",
+        min_value=5,
+        max_value=50,
+        value=25,
+        step=5
+    )
+
+# ---------------------------------------------------------
+# DEMAND STATISTICS
+# ---------------------------------------------------------
+forecast_daily = forecast_demand
+
+# Demand variability
+demand_std = daily_sales.std()
+
+if pd.isna(demand_std):
+    demand_std = 0
+
+# ---------------------------------------------------------
+# SAFETY STOCK
+# ---------------------------------------------------------
+# Safety stock increases when demand becomes more variable.
+safety_stock = (
+    demand_std *
+    np.sqrt(lead_time_days) *
+    (service_buffer / 100)
+)
+
+# ---------------------------------------------------------
+# REORDER POINT
+# ---------------------------------------------------------
+reorder_point = (
+    forecast_daily * lead_time_days
+    + safety_stock
+)
+
+# ---------------------------------------------------------
+# TARGET STOCK
+# ---------------------------------------------------------
+target_days = 14
+
+target_inventory = (
+    forecast_daily * target_days
+    + safety_stock
+)
+
+# ---------------------------------------------------------
+# EXPECTED 14-DAY DEMAND
+# ---------------------------------------------------------
+expected_demand = (
+    forecast_daily * target_days
+)
+
+# ---------------------------------------------------------
+# INVENTORY KPI CARDS
+# ---------------------------------------------------------
+icol1, icol2, icol3, icol4 = st.columns(4)
+
+with icol1:
+    st.metric(
+        "Forecast / Day",
+        f"{forecast_daily:,.0f}"
+    )
+
+with icol2:
     st.metric(
         "Safety Stock",
         f"{safety_stock:,.0f}"
     )
 
-with col3:
+with icol3:
     st.metric(
-        "Recommended 14-Day Stock",
-        f"{recommended_inventory:,.0f}"
+        "Reorder Point",
+        f"{reorder_point:,.0f}"
     )
 
-if forecast_demand > average_daily_demand * 1.10:
+with icol4:
+    st.metric(
+        "Target 14-Day Stock",
+        f"{target_inventory:,.0f}"
+    )
+
+# ---------------------------------------------------------
+# INVENTORY PLANNING TABLE
+# ---------------------------------------------------------
+st.markdown("### 📦 Inventory Planning")
+
+inventory_plan = pd.DataFrame({
+    "Metric": [
+        "Expected 14-Day Demand",
+        "Safety Stock",
+        "Recommended Target Stock",
+        "Reorder Point"
+    ],
+    "Units": [
+        round(expected_demand),
+        round(safety_stock),
+        round(target_inventory),
+        round(reorder_point)
+    ]
+})
+
+st.dataframe(
+    inventory_plan,
+    use_container_width=True,
+    hide_index=True
+)
+
+# ---------------------------------------------------------
+# INVENTORY STATUS
+# ---------------------------------------------------------
+st.markdown("### 🔎 Inventory Status")
+
+if trend_percent > 10:
 
     st.warning(
-        "⚠️ Demand appears to be increasing. "
-        "Consider increasing inventory before the next demand cycle."
+        f"📈 Demand is increasing by approximately "
+        f"{trend_percent:.1f}%. Increase replenishment "
+        f"frequency and maintain additional safety stock."
     )
 
-elif forecast_demand < average_daily_demand * 0.90:
+elif trend_percent < -10:
 
     st.info(
-        "ℹ️ Demand appears to be declining. "
-        "Avoid unnecessary inventory accumulation."
+        f"📉 Demand is declining by approximately "
+        f"{abs(trend_percent):.1f}%. Avoid aggressive "
+        f"replenishment and monitor excess inventory."
     )
 
 else:
 
     st.success(
-        "✅ Demand appears relatively stable. "
-        "Maintain normal inventory levels."
+        "✅ Demand is relatively stable. "
+        "Maintain the recommended inventory target."
     )
 
+# ---------------------------------------------------------
+# REPLENISHMENT GUIDANCE
+# ---------------------------------------------------------
+st.markdown("### 🚚 Replenishment Guidance")
+
+if forecast_daily > 0:
+
+    st.write(
+        f"Based on the current forecast, approximately "
+        f"**{forecast_daily:,.0f} units/day** are expected."
+    )
+
+    st.write(
+        f"With a supplier lead time of **{lead_time_days} days**, "
+        f"the estimated demand during lead time is "
+        f"**{forecast_daily * lead_time_days:,.0f} units**."
+    )
+
+    st.write(
+        f"Recommended reorder protection is approximately "
+        f"**{safety_stock:,.0f} safety-stock units**."
+    )
+
+# ---------------------------------------------------------
+# INVENTORY FORMULA SUMMARY
+# ---------------------------------------------------------
+with st.expander("ℹ️ How the inventory recommendation works"):
+
+    st.markdown("""
+    **Safety Stock**
+
+    Safety stock increases when demand becomes more variable.
+
+    **Reorder Point**
+
+    Reorder Point = Lead-Time Demand + Safety Stock
+
+    **Target Stock**
+
+    Target Stock = Expected 14-Day Demand + Safety Stock
+
+    These recommendations are decision-support estimates and
+    should be adjusted using actual supplier lead times,
+    current inventory, and business constraints.
+    """)
 # ---------------------------------------------------------
 # BUSINESS INSIGHTS
 # ---------------------------------------------------------
